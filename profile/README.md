@@ -1,7 +1,4 @@
-## lubus - Friendly Solutions
-
-**Open-source DNA, Product-driven thinking.**<br>
-_"We build and deliver scalable solutions shaped by years of hands-on product and open-source experience."_
+<img src="cover.png" alt="lubus cover"/>
 
 ### Who Are We?
 We’re builders at heart. We design and develop solutions that solve real problems, ranging from internal tools and client platforms to open-source projects and commercial products.
@@ -10,7 +7,8 @@ Our roots are in open-source. We started by building tools to support our work a
 
 Whether you're launching a new product, customising a workflow, or scaling your platform, we bring deep technical experience and a collaborative mindset to every project.
 
-### What We Do?Custom Solutions
+### What We Do?
+* Custom Solutions
 * Design systems & Component libraries
 * Product MVPs and prototypes
 * Enterprise-grade Solutions
