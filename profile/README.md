@@ -1,4 +1,6 @@
-<a href="https://cal.com/lubus" target="_blank"><img src="cover.png" alt="lubus cover"/></a>
+<a href="https://cal.com/lubus" target="_blank">
+  <img src="https://raw.githubusercontent.com/lubusIN/.github/refs/heads/main/profile/cover.png" alt="lubus cover"/>
+</a>
 
 ### Who Are We?
 We’re builders at heart. We design and develop solutions that solve real problems, ranging from internal tools and client platforms to open-source projects and commercial products.
