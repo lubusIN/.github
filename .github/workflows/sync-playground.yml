@@ -1,0 +1,33 @@
+name: Reusable Sync to Playground
+
+on:
+  workflow_call:
+    inputs:
+      target-branch:
+        required: false
+        type: string
+        default: playground
+      force-folder:
+        required: false
+        type: string
+        default: build/
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Prepare build
+        uses: lubusIN/.github/.github/actions/prepare-build@main
+        with:
+          checkout-ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Publish target branch
+        uses: lubusIN/.github/.github/actions/publish-build-branch@main
+        with:
+          target-branch: ${{ inputs.target-branch }}
+          paths: ${{ inputs.force-folder }}
+          commit-message: Build and deploy to ${{ inputs.target-branch }}

@@ -1,0 +1,26 @@
+name: Reusable Plugin Check
+
+on:
+  workflow_call:
+
+jobs:
+  plugin-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare build
+        uses: lubusIN/.github/.github/actions/prepare-build@main
+        with:
+          checkout-ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Run WordPress Plugin Check
+        uses: wordpress/plugin-check-action@v1
+        with:
+          exclude-directories: |
+            src
+            vendor
+            node_modules
+            .github
+            _playground
+            _wordpress-org
