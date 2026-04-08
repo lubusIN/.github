@@ -1,0 +1,71 @@
+name: Publish Build Branch
+description: Configure git, prepare target branch, commit selected paths, and force-push.
+
+inputs:
+  target-branch:
+    description: Branch name to recreate and push.
+    required: true
+  paths:
+    description: Newline-separated list of paths to add with git add -f.
+    required: true
+  commit-message:
+    description: Commit message for generated build commit.
+    required: true
+  git-user-name:
+    description: Git user.name to configure.
+    required: false
+    default: GitHub Action
+  git-user-email:
+    description: Git user.email to configure.
+    required: false
+    default: action@github.com
+  delete-remote-first:
+    description: Delete remote target branch before pushing.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Configure Git identity
+      shell: bash
+      run: |
+        git config --global user.name "${{ inputs.git-user-name }}"
+        git config --global user.email "${{ inputs.git-user-email }}"
+
+    - name: Delete remote branch (optional)
+      if: inputs.delete-remote-first == 'true'
+      shell: bash
+      run: |
+        git fetch origin
+        git push origin --delete "${{ inputs.target-branch }}" || echo "Branch does not exist"
+
+    - name: Prepare target branch
+      shell: bash
+      run: |
+        git checkout -B "${{ inputs.target-branch }}"
+
+    - name: Stage build outputs
+      shell: bash
+      run: |
+        while IFS= read -r path; do
+          if [ -z "$path" ]; then
+            continue
+          fi
+
+          if [ -e "$path" ]; then
+            git add -f "$path"
+          else
+            echo "Skipping missing path: $path"
+          fi
+        done <<< "${{ inputs.paths }}"
+
+    - name: Commit and push changes
+      shell: bash
+      run: |
+        if ! git diff --cached --quiet; then
+          git commit -m "${{ inputs.commit-message }}"
+          git push origin "${{ inputs.target-branch }}" --force
+        else
+          echo "Nothing to commit, skipping push."
+        fi

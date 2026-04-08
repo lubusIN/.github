@@ -1,0 +1,56 @@
+name: Prepare Build
+description: Checkout repository, install dependencies, and run build when available.
+
+inputs:
+  checkout-ref:
+    description: Git ref to checkout.
+    required: false
+    default: ""
+  fetch-depth:
+    description: Checkout fetch depth.
+    required: false
+    default: "0"
+  run-build:
+    description: Run npm build when package.json has a build script.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.checkout-ref != '' && inputs.checkout-ref || github.sha }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Set up Node.js
+      if: hashFiles('package.json') != ''
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: npm
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        if [ -f "composer.json" ]; then
+          if [ ! -d "vendor" ]; then
+            echo "No vendor directory found. Running composer install..."
+            composer install --no-dev --no-interaction --prefer-dist
+          else
+            echo "Vendor directory already exists. Skipping composer install."
+          fi
+        fi
+
+        if [ -f "package.json" ]; then
+          npm ci
+        fi
+
+    - name: Build project
+      if: inputs.run-build == 'true'
+      shell: bash
+      run: |
+        if [ -f "package.json" ] && npm run | grep -q "build"; then
+          npm run build
+        fi

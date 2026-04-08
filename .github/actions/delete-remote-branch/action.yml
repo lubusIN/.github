@@ -1,0 +1,16 @@
+name: Delete Remote Branch
+description: Delete a remote branch if it exists.
+
+inputs:
+  target-branch:
+    description: Branch name to delete from origin.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Delete remote branch if it exists
+      shell: bash
+      run: |
+        git fetch origin
+        git push origin --delete "${{ inputs.target-branch }}" || echo "Branch does not exist"
