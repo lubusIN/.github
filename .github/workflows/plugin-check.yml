@@ -24,3 +24,8 @@ jobs:
             .github
             _playground
             _wordpress-org
+         exclude-files: |
+            **/.git*
+            **/.github/**
+            **/.DS_Store
+            **/.* 
