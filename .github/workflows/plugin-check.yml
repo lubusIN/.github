@@ -14,18 +14,31 @@ jobs:
           checkout-ref: ${{ github.sha }}
           fetch-depth: 0
 
+      - name: Setup PHP with WP-CLI
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: latest
+          coverage: none
+          tools: wp-cli
+
+      - name: Install dist-archive command
+        run: wp package install wp-cli/dist-archive-command:@stable
+
+      - name: Build plugin from .distignore
+        run: |
+          wp dist-archive . ./plugin-check-build.zip
+          mkdir -p tmp-build
+          unzip -q plugin-check-build.zip -d tmp-build
+
+          archive_dirs=(tmp-build/*/)
+          if [ "${#archive_dirs[@]}" -ne 1 ]; then
+            echo "Expected exactly one plugin directory in archive output."
+            exit 1
+          fi
+
+          mv "${archive_dirs[0]%/}" tmp-build/plugin
+
       - name: Run WordPress Plugin Check
         uses: wordpress/plugin-check-action@v1
         with:
-          exclude-directories: |
-            src
-            vendor
-            node_modules
-            .github
-            _playground
-            _wordpress-org
-          exclude-files: |
-            **/.git*
-            **/.github/**
-            **/.DS_Store
-            **/.* 
+          build-dir: ./tmp-build/plugin
