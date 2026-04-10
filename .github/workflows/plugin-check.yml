@@ -14,20 +14,15 @@ jobs:
           checkout-ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Setup PHP
+      - name: Setup PHP with WP-CLI
         uses: shivammathur/setup-php@v2
         with:
           php-version: latest
           coverage: none
-
-      - name: Install WP-CLI
-        run: |
-          curl -sO https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-          chmod +x wp-cli.phar
-          sudo mv wp-cli.phar /usr/local/bin/wp
+          tools: wp-cli
 
       - name: Install dist-archive command
-        run: wp package install wp-cli/dist-archive-command:@stable
+        run: wp package install wp-cli/dist-archive-command:v3.1.0
 
       - name: Build plugin from .distignore
         run: |
