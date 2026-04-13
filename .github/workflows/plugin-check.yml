@@ -5,7 +5,7 @@ on:
     inputs:
       plugin-slug:
         description: Plugin slug used for Plugin Check build directory
-        required: false
+        required: true
         type: string
 
 jobs:
@@ -31,9 +31,9 @@ jobs:
 
       - name: Build plugin from .distignore
         run: |
-          wp dist-archive . ./plugin-check-build.zip
+          wp dist-archive . ./${{ inputs.plugin-slug }}.zip
           mkdir -p tmp-build
-          unzip -q plugin-check-build.zip -d tmp-build
+          unzip -q "${{ inputs.plugin-slug }}.zip" -d tmp-build
 
           archive_dirs=(tmp-build/*/)
           if [ "${#archive_dirs[@]}" -ne 1 ]; then
@@ -41,18 +41,7 @@ jobs:
             exit 1
           fi
 
-          extracted_dir="${archive_dirs[0]%/}"
-          plugin_slug="${{ inputs.plugin-slug }}"
-
-          if [ -z "$plugin_slug" ]; then
-            plugin_slug="$(basename "$extracted_dir")"
-          fi
-
-          build_dir="tmp-build/$plugin_slug"
-          mv "$extracted_dir" "$build_dir"
-          echo "PLUGIN_BUILD_DIR=./$build_dir" >> "$GITHUB_ENV"
-
       - name: Run WordPress Plugin Check
         uses: wordpress/plugin-check-action@v1
         with:
-          build-dir: ${{ env.PLUGIN_BUILD_DIR }}
+          build-dir: ./tmp-build/${{ inputs.plugin-slug }}
