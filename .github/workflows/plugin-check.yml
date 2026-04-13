@@ -2,6 +2,11 @@ name: Reusable Plugin Check
 
 on:
   workflow_call:
+    inputs:
+      plugin-slug:
+        description: Plugin slug used for Plugin Check build directory
+        required: false
+        type: string
 
 jobs:
   plugin-check:
@@ -36,9 +41,18 @@ jobs:
             exit 1
           fi
 
-          mv "${archive_dirs[0]%/}" tmp-build/plugin
+          extracted_dir="${archive_dirs[0]%/}"
+          plugin_slug="${{ inputs.plugin-slug }}"
+
+          if [ -z "$plugin_slug" ]; then
+            plugin_slug="$(basename "$extracted_dir")"
+          fi
+
+          build_dir="tmp-build/$plugin_slug"
+          mv "$extracted_dir" "$build_dir"
+          echo "PLUGIN_BUILD_DIR=./$build_dir" >> "$GITHUB_ENV"
 
       - name: Run WordPress Plugin Check
         uses: wordpress/plugin-check-action@v1
         with:
-          build-dir: ./tmp-build/plugin
+          build-dir: ${{ env.PLUGIN_BUILD_DIR }}
