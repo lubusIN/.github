@@ -82,12 +82,10 @@ jobs:
               const zipFile = `pr-build-${prNumber}.zip`;
               zipUrl = `${bucketPublicUrl}/${zipFile}`;
               commentMarker = "<!-- WordPress Playground PR Preview - Cloudflare R2 -->";
-              storageTitle = "Preview via Cloudflare R2 Storage";
             } else {
               const branch = `playground-${prNumber}`;
               zipUrl = `https://github-proxy.com/proxy/?repo=${owner}/${repo}&branch=${branch}`;
               commentMarker = "<!-- WordPress Playground PR Preview - Build Branch -->";
-              storageTitle = "Preview via GitHub Build Branch";
             }
             const blueprint = {
               "$schema": "https://playground.wordpress.net/blueprint-schema.json",
@@ -127,7 +125,7 @@ jobs:
             const previewUrl = `https://playground.wordpress.net/#${encoded}`;
             const commentBody = `
               ${commentMarker}
-              ### ${storageTitle}
+              ### Playground Preview
               ⚡️WordPress Playground [Preview](${previewUrl})
               🚀 Build zip file [Download](${zipUrl})
               I will update this comment with the latest preview links as you push more changes to this PR.
