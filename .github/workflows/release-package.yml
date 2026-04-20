@@ -1,0 +1,63 @@
+name: Reusable Release Package
+
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        description: Release tag used for checkout and upload target.
+        required: true
+        type: string
+      checkout-ref:
+        description: Optional git ref to checkout. Defaults to release-tag.
+        required: false
+        type: string
+        default: ""
+      artifact-name:
+        description: Optional zip filename. Defaults to <repo>.zip.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build_and_package:
+    name: Build, Archive and Upload Release Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare build
+        uses: lubusIN/.github/.github/actions/prepare-build@main
+        with:
+          checkout-ref: ${{ inputs.checkout-ref != '' && inputs.checkout-ref || inputs.release-tag }}
+          fetch-depth: 1
+
+      - name: Setup PHP with WP-CLI
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: wp-cli
+
+      - name: Install dist-archive command
+        run: wp package install wp-cli/dist-archive-command:v3.1.0
+
+      - name: Archive plugin package
+        id: archive
+        run: |
+          ARTIFACT_NAME="${{ inputs.artifact-name }}"
+          if [ -z "$ARTIFACT_NAME" ]; then
+            ARTIFACT_NAME="${{ github.event.repository.name }}.zip"
+          fi
+
+          wp dist-archive . "$ARTIFACT_NAME" --force --plugin-dirname="${{ github.event.repository.name }}"
+          echo "artifact_name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload ZIP to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.archive.outputs.artifact_name }}
+          tag_name: ${{ inputs.release-tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
