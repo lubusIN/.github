@@ -10,6 +10,7 @@ on:
       force-folder:
         required: false
         type: string
+        description: Newline-separated paths to add to target branch.
         default: build/
 
 jobs:
