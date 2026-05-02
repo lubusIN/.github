@@ -116,7 +116,7 @@ jobs:
                   "step": "importWxr",
                   "file": {
                     "resource": "url",
-                    "url": "https://raw.githubusercontent.com/lubusIN/blablablocks-slider-block/playground/_playground/demo-content.xml"
+                    "url": `https://raw.githubusercontent.com/${owner}/${repo}/playground/_playground/demo-content.xml`
                   }
                 }
               ]
