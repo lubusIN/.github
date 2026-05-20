@@ -1,0 +1,116 @@
+name: Reusable WordPress.org Deploy
+
+on:
+  workflow_call:
+    inputs:
+      plugin-slug:
+        description: 'WordPress.org plugin slug. Defaults to the repository name.'
+        required: false
+        type: string
+        default: ''
+      run-deploy:
+        description: 'Whether to run the full plugin deployment.'
+        required: false
+        type: boolean
+        default: false
+      run-assets:
+        description: 'Whether to run the asset update.'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      SVN_USERNAME:
+        description: 'WordPress.org SVN username'
+        required: true
+      SVN_PASSWORD:
+        description: 'WordPress.org SVN password'
+        required: true
+
+jobs:
+  deploy-to-wordpress:
+    name: Deploy plugin release to WordPress.org
+    if: inputs.run-deploy == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare build
+        uses: lubusIN/.github/.github/actions/prepare-build@main
+        with:
+          checkout-ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Get tag version
+        id: get-version
+        shell: bash
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
+
+      - name: Validate version format
+        shell: bash
+        run: |
+          VERSION="${{ steps.get-version.outputs.VERSION }}"
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid tag version: $VERSION"
+            echo "Use tags like 1.2.0 or v1.2.0"
+            exit 1
+          fi
+
+      - name: Validate package.json version
+        shell: bash
+        run: |
+          VERSION="${{ steps.get-version.outputs.VERSION }}"
+          if [ -f "package.json" ]; then
+            PACKAGE_VERSION=$(node -p "require('./package.json').version" 2>/dev/null)
+
+            if [ "$PACKAGE_VERSION" != "$VERSION" ]; then
+              echo "package.json version $PACKAGE_VERSION does not match tag version $VERSION"
+              exit 1
+            fi
+          else
+            echo "No package.json found. Skipping package.json version validation."
+          fi
+
+      - name: Validate readme stable tag
+        shell: bash
+        run: |
+          VERSION="${{ steps.get-version.outputs.VERSION }}"
+          README_FILE=$(find . -maxdepth 1 -iname "readme.txt" | head -n 1)
+
+          if [ -z "$README_FILE" ]; then
+            echo "No readme.txt or README.txt found."
+            exit 1
+          fi
+
+          if ! grep -Eqi "^Stable tag:[[:space:]]*$VERSION$" "$README_FILE"; then
+            echo "$README_FILE Stable tag does not match tag version: $VERSION"
+            exit 1
+          fi
+
+      - name: Deploy plugin to WordPress.org
+        uses: 10up/action-wordpress-plugin-deploy@stable
+        env:
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SLUG: ${{ inputs.plugin-slug != '' && inputs.plugin-slug || github.event.repository.name }}
+          VERSION: ${{ steps.get-version.outputs.VERSION }}
+
+  update-assets:
+    name: Update WordPress.org readme/assets
+    if: inputs.run-assets == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update WordPress.org readme/assets
+        uses: 10up/action-wordpress-plugin-asset-update@stable
+        env:
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SLUG: ${{ inputs.plugin-slug != '' && inputs.plugin-slug || github.event.repository.name }}
+          IGNORE_OTHER_FILES: true
