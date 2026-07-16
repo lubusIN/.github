@@ -14,6 +14,14 @@ inputs:
     description: Run npm build when package.json has a build script.
     required: false
     default: "true"
+  setup-wp-cli:
+    description: Setup PHP with WP-CLI and install wp-cli/dist-archive-command via Composer.
+    required: false
+    default: "false"
+  php-version:
+    description: PHP version to setup when setup-wp-cli is true.
+    required: false
+    default: "8.2"
 
 runs:
   using: composite
@@ -23,6 +31,24 @@ runs:
       with:
         ref: ${{ inputs.checkout-ref != '' && inputs.checkout-ref || github.sha }}
         fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Setup PHP with WP-CLI and Composer
+      if: inputs.setup-wp-cli == 'true'
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ inputs.php-version }}
+        coverage: none
+        tools: composer, wp-cli
+
+    - name: Install dist-archive command via Composer
+      if: inputs.setup-wp-cli == 'true'
+      shell: bash
+      run: |
+        mkdir -p ~/.wp-cli/packages
+        if [ ! -f ~/.wp-cli/packages/composer.json ]; then
+          echo '{"minimum-stability":"dev","prefer-stable":true}' > ~/.wp-cli/packages/composer.json
+        fi
+        composer --working-dir=$HOME/.wp-cli/packages require wp-cli/dist-archive-command:v3.1.0 --no-interaction
 
     - name: Set up Node.js
       if: hashFiles('package.json') != ''
