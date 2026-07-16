@@ -24,6 +24,7 @@ jobs:
         uses: lubusIN/.github/.github/actions/prepare-build@main
         with:
           checkout-ref: ${{ github.sha }}
+          setup-wp-cli: "true"
           fetch-depth: 0
 
       - name: Publish target branch
