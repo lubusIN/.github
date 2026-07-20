@@ -12,6 +12,11 @@ on:
         type: string
         description: Newline-separated paths to add to target branch.
         default: build/
+      mode:
+        required: false
+        type: string
+        description: 'Sync mode: auto, branch, or r2. Auto uses branch for public repos and r2 for private repos.'
+        default: auto
 
 jobs:
   build-and-push:
@@ -27,7 +32,27 @@ jobs:
           setup-wp-cli: "true"
           fetch-depth: 0
 
+      - name: Create Plugin Zip
+        if: ${{ inputs.mode == 'r2' || (inputs.mode == 'auto' && github.event.repository.private) }}
+        run: npx wp-scripts plugin-zip
+
+      - name: Upload to Cloudflare R2
+        if: ${{ inputs.mode == 'r2' || (inputs.mode == 'auto' && github.event.repository.private) }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT_URL }}
+        run: |
+          ZIP_FILE=$(ls *.zip | head -n 1)
+          echo "Uploading $ZIP_FILE to R2 bucket $R2_BUCKET..."
+          aws s3 cp "$ZIP_FILE" "s3://$R2_BUCKET/$ZIP_FILE" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --no-progress
+
       - name: Publish target branch
+        if: ${{ inputs.mode == 'branch' || (inputs.mode == 'auto' && !github.event.repository.private) }}
         uses: lubusIN/.github/.github/actions/publish-build-branch@main
         with:
           target-branch: ${{ inputs.target-branch }}
