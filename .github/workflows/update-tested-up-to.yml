@@ -130,6 +130,14 @@ jobs:
           npm run lint:css
           npm run test:unit -- --runInBand
 
+      - name: Stage the Tested up to update for validation
+        env:
+          VERSION: ${{ needs.inspect.outputs.latest-version }}
+        shell: bash
+        run: |
+          sed -i -E "s/^(Tested up to:[[:space:]]*).*/\1${VERSION}/" readme.txt
+          grep -Eq "^Tested up to:[[:space:]]*${VERSION}$" readme.txt
+
       - name: Build release package
         env:
           PLUGIN_SLUG: ${{ inputs.plugin-slug != '' && inputs.plugin-slug || github.event.repository.name }}
