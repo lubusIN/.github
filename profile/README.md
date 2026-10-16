@@ -22,6 +22,6 @@ Above all, we are your friendly builders and solution providers. We're passionat
 Let’s build something that lasts.
 _____
 ☕️ Free consultation - [Schedule](https://cal.com/lubus/free-consultation) a call.<br>
-🙋 Say hey on [Twitter](https://twitter.com/lubusIN?lang=en) or [Linkedin](https://www.linkedin.com/company/lubusIN).<br>
+🙋 Say hey on [Twitter](https://twitter.com/lubusIN?lang=en) or [Linkedin](https://www.linkedin.com/company/lubus).<br>
 👩‍💻 Follow us on [Instagram](https://www.instagram.com/lubusin/) or [YouTube](https://www.youtube.com/@LubusIn).<br>
 🌍 Visit [Website](https://lubus.in/?utm_source=github&utm_medium=social&utm_campaign=org_profile_banner).
