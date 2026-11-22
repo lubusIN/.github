@@ -91,6 +91,7 @@ jobs:
           LANDING_PAGE: ${{ inputs.landing-page }}
           APPEND_TO_PR_DESCRIPTION: ${{ inputs.append-to-pr-description || inputs.update-pr-description || false }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         with:
           script: |
@@ -102,22 +103,47 @@ jobs:
             const storageMethod = process.env.STORAGE_METHOD;
 
             let zipUrl;
+            let pluginStep;
             if (storageMethod === 'r2') {
               const bucketPublicUrl = process.env.CLOUDFLARE_R2_BUCKET_PUBLIC_URL;
               const zipFile = `pr-build-${prNumber}.zip`;
               zipUrl = `${bucketPublicUrl}/${zipFile}`;
+              pluginStep = {
+                step: "installPlugin",
+                pluginData: {
+                  resource: "url",
+                  url: zipUrl
+                }
+              };
             } else {
               const branch = `playground-${prNumber}`;
-              zipUrl = `https://github-proxy.com/proxy/?repo=${owner}/${repo}&branch=${branch}`;
+              zipUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
+              pluginStep = {
+                step: "installPlugin",
+                pluginData: {
+                  resource: "git:directory",
+                  url: `https://github.com/${owner}/${repo}.git`,
+                  ref: branch,
+                  refType: "branch"
+                },
+                options: {
+                  targetFolderName: repo
+                }
+              };
             }
 
-            const landingPage = process.env.LANDING_PAGE?.trim();
+            let landingPage = process.env.LANDING_PAGE?.trim();
 
             const headRepo = process.env.PR_HEAD_REPO || context.payload.pull_request?.head?.repo?.full_name || `${owner}/${repo}`;
-            const prBranch = process.env.PR_HEAD_REF || context.payload.pull_request?.head?.ref || context.payload.pull_request?.head?.sha;
+            const headSha = process.env.PR_HEAD_SHA || context.payload.pull_request?.head?.sha;
+            const prBranch = process.env.PR_HEAD_REF || context.payload.pull_request?.head?.ref || headSha;
 
             const demoContentPath = path.resolve(process.env.GITHUB_WORKSPACE || '.', '_playground', 'demo-content.xml');
             const hasDemoContent = fs.existsSync(demoContentPath);
+
+            if (!hasDemoContent && (!landingPage || landingPage === '/wp-admin/post.php?post=4&action=edit')) {
+              landingPage = '/wp-admin/';
+            }
 
             const steps = [
               {
@@ -132,21 +158,16 @@ jobs:
                 step: "setSiteOptions",
                 options: { blogname: `${owner}/${repo} - PR ${prNumber}` }
               },
-              {
-                step: "installPlugin",
-                pluginData: {
-                  resource: "url",
-                  url: zipUrl
-                }
-              }
+              pluginStep
             ];
 
             if (hasDemoContent) {
+              const demoRef = headSha || encodeURIComponent(prBranch);
               steps.push({
                 step: "importWxr",
                 file: {
                   resource: "url",
-                  url: `https://raw.githubusercontent.com/${headRepo}/${prBranch}/_playground/demo-content.xml`
+                  url: `https://raw.githubusercontent.com/${headRepo}/${demoRef}/_playground/demo-content.xml`
                 }
               });
             }
@@ -206,25 +227,45 @@ jobs:
               return current;
             }
 
-            const [{ data: pr }, commentsResponse] = await Promise.all([
-              github.rest.pulls.get({ owner, repo, pull_number: prNumber }),
-              github.rest.issues.listComments({ owner, repo, issue_number: prNumber }),
-            ]);
-
-            const previewComments = commentsResponse.data.filter(c =>
-              c.user?.type === 'Bot' && c.body.includes('<!-- WordPress Playground PR Preview')
-            );
-
-            if (appendToPrDescription) {
-              const updatedBody = updateDescription(pr.body, previewContent);
-              if (updatedBody !== (pr.body || '')) {
-                await github.rest.pulls.update({
+            async function updatePrDescription(transform) {
+              const maxRetries = 3;
+              for (let attempt = 0; attempt < maxRetries; attempt++) {
+                const { data: latestPr } = await github.rest.pulls.get({
                   owner,
                   repo,
                   pull_number: prNumber,
-                  body: updatedBody,
                 });
+                const currentBody = latestPr.body || '';
+                const newBody = transform(currentBody);
+                if (newBody === currentBody) {
+                  return;
+                }
+                try {
+                  await github.rest.pulls.update({
+                    owner,
+                    repo,
+                    pull_number: prNumber,
+                    body: newBody,
+                  });
+                  return;
+                } catch (error) {
+                  if (attempt === maxRetries - 1) throw error;
+                }
               }
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: prNumber,
+            });
+
+            const previewComments = comments.filter(c =>
+              c.user?.type === 'Bot' && c.body && c.body.includes('<!-- WordPress Playground PR Preview')
+            );
+
+            if (appendToPrDescription) {
+              await updatePrDescription(body => updateDescription(body, previewContent));
 
               for (const comment of previewComments) {
                 try {
@@ -261,15 +302,7 @@ jobs:
                 });
               }
 
-              const cleanedBody = removeDescription(pr.body);
-              if (cleanedBody !== (pr.body || '')) {
-                await github.rest.pulls.update({
-                  owner,
-                  repo,
-                  pull_number: prNumber,
-                  body: cleanedBody,
-                });
-              }
+              await updatePrDescription(body => removeDescription(body));
             }
 
   cleanup:
@@ -300,13 +333,41 @@ jobs:
               return current;
             }
 
-            const [{ data: pr }, commentsResponse] = await Promise.all([
-              github.rest.pulls.get({ owner, repo, pull_number: prNumber }),
-              github.rest.issues.listComments({ owner, repo, issue_number: prNumber }),
-            ]);
+            async function updatePrDescription(transform) {
+              const maxRetries = 3;
+              for (let attempt = 0; attempt < maxRetries; attempt++) {
+                const { data: latestPr } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                });
+                const currentBody = latestPr.body || '';
+                const newBody = transform(currentBody);
+                if (newBody === currentBody) {
+                  return;
+                }
+                try {
+                  await github.rest.pulls.update({
+                    owner,
+                    repo,
+                    pull_number: prNumber,
+                    body: newBody,
+                  });
+                  return;
+                } catch (error) {
+                  if (attempt === maxRetries - 1) throw error;
+                }
+              }
+            }
 
-            const previewComments = commentsResponse.data.filter(c =>
-              c.user?.type === 'Bot' && c.body.includes('<!-- WordPress Playground PR Preview')
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: prNumber,
+            });
+
+            const previewComments = comments.filter(c =>
+              c.user?.type === 'Bot' && c.body && c.body.includes('<!-- WordPress Playground PR Preview')
             );
 
             for (const comment of previewComments) {
@@ -319,28 +380,20 @@ jobs:
               } catch (_) {}
             }
 
-            const cleanedBody = removeDescription(pr.body);
-            if (cleanedBody !== (pr.body || '')) {
-              await github.rest.pulls.update({
-                owner,
-                repo,
-                pull_number: prNumber,
-                body: cleanedBody,
-              });
-            }
+            await updatePrDescription(body => removeDescription(body));
 
       - name: Checkout repository
-        if: env.STORAGE_METHOD == 'branch'
+        if: ${{ !cancelled() && env.STORAGE_METHOD == 'branch' }}
         uses: actions/checkout@v4
 
       - name: Cleanup branch storage
-        if: env.STORAGE_METHOD == 'branch'
+        if: ${{ !cancelled() && env.STORAGE_METHOD == 'branch' }}
         uses: lubusIN/.github/.github/actions/delete-remote-branch@main
         with:
           target-branch: ${{ env.PR_BUILD_BRANCH }}
 
       - name: Cleanup R2 storage
-        if: env.STORAGE_METHOD == 'r2'
+        if: ${{ !cancelled() && env.STORAGE_METHOD == 'r2' }}
         run: |
           aws configure set aws_access_key_id ${{ secrets.R2_ACCESS_KEY_ID }}
           aws configure set aws_secret_access_key ${{ secrets.R2_SECRET_ACCESS_KEY }}
