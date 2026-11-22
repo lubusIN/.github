@@ -86,7 +86,7 @@ jobs:
           aws s3 cp "$PR_BUILD_ZIP" "s3://$BUCKET/$PR_BUILD_ZIP" --endpoint-url "$ENDPOINT"
 
       - name: Post or update preview
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           LANDING_PAGE: ${{ inputs.landing-page }}
           APPEND_TO_PR_DESCRIPTION: ${{ inputs.append-to-pr-description || inputs.update-pr-description || false }}
@@ -312,7 +312,7 @@ jobs:
 
     steps:
       - name: Cleanup preview comment and description
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -384,7 +384,7 @@ jobs:
 
       - name: Checkout repository
         if: ${{ !cancelled() && env.STORAGE_METHOD == 'branch' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Cleanup branch storage
         if: ${{ !cancelled() && env.STORAGE_METHOD == 'branch' }}
