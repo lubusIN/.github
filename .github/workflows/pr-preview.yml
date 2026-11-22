@@ -2,6 +2,22 @@ name: Reusable WordPress Playground Preview
 
 on:
   workflow_call:
+    inputs:
+      landing-page:
+        description: 'Landing page path for WordPress Playground. Defaults to /wp-admin/post.php?post=4&action=edit.'
+        required: false
+        type: string
+        default: '/wp-admin/post.php?post=4&action=edit'
+      append-to-pr-description:
+        description: 'Whether to append preview links to the PR description instead of posting a comment.'
+        required: false
+        type: boolean
+        default: false
+      update-pr-description:
+        description: 'Alias for append-to-pr-description.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -69,92 +85,191 @@ jobs:
           fi
           aws s3 cp "$PR_BUILD_ZIP" "s3://$BUCKET/$PR_BUILD_ZIP" --endpoint-url "$ENDPOINT"
 
-      - name: Post or update preview comment
+      - name: Post or update preview
         uses: actions/github-script@v7
+        env:
+          LANDING_PAGE: ${{ inputs.landing-page }}
+          APPEND_TO_PR_DESCRIPTION: ${{ inputs.append-to-pr-description || inputs.update-pr-description || false }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         with:
           script: |
+            const fs = require('fs');
+            const path = require('path');
+
             const { owner, repo } = context.repo;
             const prNumber = context.payload.pull_request.number;
             const storageMethod = process.env.STORAGE_METHOD;
-            let zipUrl, commentMarker, storageTitle;
+
+            let zipUrl;
             if (storageMethod === 'r2') {
               const bucketPublicUrl = process.env.CLOUDFLARE_R2_BUCKET_PUBLIC_URL;
               const zipFile = `pr-build-${prNumber}.zip`;
               zipUrl = `${bucketPublicUrl}/${zipFile}`;
-              commentMarker = "<!-- WordPress Playground PR Preview - Cloudflare R2 -->";
             } else {
               const branch = `playground-${prNumber}`;
               zipUrl = `https://github-proxy.com/proxy/?repo=${owner}/${repo}&branch=${branch}`;
-              commentMarker = "<!-- WordPress Playground PR Preview - Build Branch -->";
             }
-            const blueprint = {
-              "$schema": "https://playground.wordpress.net/blueprint-schema.json",
-              "landingPage": "/wp-admin/post.php?post=4&action=edit",
-              "login": true,
-              "features": { "networking": true },
-              "steps": [
-                {
-                  "step": "updateUserMeta",
-                  "meta": {
-                    "admin_color": "modern",
-                    "show_welcome_panel": 0
-                  },
-                  "userId": 1
+
+            const landingPage = process.env.LANDING_PAGE?.trim();
+
+            const headRepo = process.env.PR_HEAD_REPO || context.payload.pull_request?.head?.repo?.full_name || `${owner}/${repo}`;
+            const prBranch = process.env.PR_HEAD_REF || context.payload.pull_request?.head?.ref || context.payload.pull_request?.head?.sha;
+
+            const demoContentPath = path.resolve(process.env.GITHUB_WORKSPACE || '.', '_playground', 'demo-content.xml');
+            const hasDemoContent = fs.existsSync(demoContentPath);
+
+            const steps = [
+              {
+                step: "updateUserMeta",
+                meta: {
+                  admin_color: "modern",
+                  show_welcome_panel: 0
                 },
-                {
-                  "step": "setSiteOptions",
-                  "options": { "blogname": `${owner}/${repo} - PR ${prNumber}` }
-                },
-                {
-                  "step": "installPlugin",
-                  "pluginData": {
-                    "resource": "url",
-                    "url": zipUrl
-                  }
-                },
-                {
-                  "step": "importWxr",
-                  "file": {
-                    "resource": "url",
-                    "url": `https://raw.githubusercontent.com/${owner}/${repo}/playground/_playground/demo-content.xml`
-                  }
+                userId: 1
+              },
+              {
+                step: "setSiteOptions",
+                options: { blogname: `${owner}/${repo} - PR ${prNumber}` }
+              },
+              {
+                step: "installPlugin",
+                pluginData: {
+                  resource: "url",
+                  url: zipUrl
                 }
-              ]
+              }
+            ];
+
+            if (hasDemoContent) {
+              steps.push({
+                step: "importWxr",
+                file: {
+                  resource: "url",
+                  url: `https://raw.githubusercontent.com/${headRepo}/${prBranch}/_playground/demo-content.xml`
+                }
+              });
+            }
+
+            const blueprint = {
+              $schema: "https://playground.wordpress.net/blueprint-schema.json",
+              ...(landingPage ? { landingPage } : {}),
+              login: true,
+              features: { networking: true },
+              steps: steps
             };
+
             const encoded = Buffer.from(JSON.stringify(blueprint)).toString('base64');
             const previewUrl = `https://playground.wordpress.net/#${encoded}`;
-            const commentBody = `
-              ${commentMarker}
-              ### Playground Preview
-              ⚡️WordPress Playground [Preview](${previewUrl})
-              🚀 Build zip file [Download](${zipUrl})
-              I will update this comment with the latest preview links as you push more changes to this PR.
-              > [!NOTE]
-              > The preview sites are created using [WordPress Playground](https://wordpress.org/playground/). You can add content, edit settings, and test the pull request as you would on a real site, but please note that changes are not saved between sessions.
-            `;
-            const comments = await github.rest.issues.listComments({
-              owner,
-              repo,
-              issue_number: prNumber,
-            });
-            const existing = comments.data.find(c =>
-              c.body.includes("<!-- WordPress Playground PR Preview") &&
-              c.user.type === 'Bot'
+
+            const startMarker = '<!-- WordPress Playground PR Preview - Start -->';
+            const endMarker = '<!-- WordPress Playground PR Preview - End -->';
+
+            const appendToPrDescription = String(process.env.APPEND_TO_PR_DESCRIPTION).toLowerCase() === 'true';
+
+            const updateMessage = appendToPrDescription
+              ? 'I will update this description with the latest preview links as you push more changes to this PR.'
+              : 'I will update this comment with the latest preview links as you push more changes to this PR.';
+
+            const previewContent = [
+              startMarker,
+              '### Playground Preview',
+              `⚡️WordPress Playground [Preview](${previewUrl})`,
+              `🚀 Build zip file [Download](${zipUrl})`,
+              updateMessage,
+              '> [!NOTE]',
+              '> The preview sites are created using [WordPress Playground](https://wordpress.org/playground/). You can add content, edit settings, and test the pull request as you would on a real site, but please note that changes are not saved between sessions.',
+              endMarker
+            ].join('\n');
+
+            function updateDescription(body, content) {
+              const current = body || '';
+              const startIndex = current.indexOf(startMarker);
+              const endIndex = current.indexOf(endMarker);
+              if (startIndex !== -1 && endIndex !== -1 && endIndex >= startIndex) {
+                const before = current.substring(0, startIndex).trimEnd();
+                const after = current.substring(endIndex + endMarker.length).trimStart();
+                return [before, content, after].filter(Boolean).join('\n\n');
+              }
+              return current.trim() ? `${current.trim()}\n\n${content}` : content;
+            }
+
+            function removeDescription(body) {
+              const current = body || '';
+              const startIndex = current.indexOf(startMarker);
+              const endIndex = current.indexOf(endMarker);
+              if (startIndex !== -1 && endIndex !== -1 && endIndex >= startIndex) {
+                const before = current.substring(0, startIndex).trimEnd();
+                const after = current.substring(endIndex + endMarker.length).trimStart();
+                return [before, after].filter(Boolean).join('\n\n');
+              }
+              return current;
+            }
+
+            const [{ data: pr }, commentsResponse] = await Promise.all([
+              github.rest.pulls.get({ owner, repo, pull_number: prNumber }),
+              github.rest.issues.listComments({ owner, repo, issue_number: prNumber }),
+            ]);
+
+            const previewComments = commentsResponse.data.filter(c =>
+              c.user?.type === 'Bot' && c.body.includes('<!-- WordPress Playground PR Preview')
             );
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body: commentBody,
-              });
+
+            if (appendToPrDescription) {
+              const updatedBody = updateDescription(pr.body, previewContent);
+              if (updatedBody !== (pr.body || '')) {
+                await github.rest.pulls.update({
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                  body: updatedBody,
+                });
+              }
+
+              for (const comment of previewComments) {
+                try {
+                  await github.rest.issues.deleteComment({
+                    owner,
+                    repo,
+                    comment_id: comment.id,
+                  });
+                } catch (_) {}
+              }
             } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: prNumber,
-                body: commentBody,
-              });
+              if (previewComments.length > 0) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: previewComments[0].id,
+                  body: previewContent,
+                });
+                for (const extra of previewComments.slice(1)) {
+                  try {
+                    await github.rest.issues.deleteComment({
+                      owner,
+                      repo,
+                      comment_id: extra.id,
+                    });
+                  } catch (_) {}
+                }
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  body: previewContent,
+                });
+              }
+
+              const cleanedBody = removeDescription(pr.body);
+              if (cleanedBody !== (pr.body || '')) {
+                await github.rest.pulls.update({
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                  body: cleanedBody,
+                });
+              }
             }
 
   cleanup:
@@ -163,7 +278,59 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Cleanup preview comment and description
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+
+            const startMarker = '<!-- WordPress Playground PR Preview - Start -->';
+            const endMarker = '<!-- WordPress Playground PR Preview - End -->';
+
+            function removeDescription(body) {
+              const current = body || '';
+              const startIndex = current.indexOf(startMarker);
+              const endIndex = current.indexOf(endMarker);
+              if (startIndex !== -1 && endIndex !== -1 && endIndex >= startIndex) {
+                const before = current.substring(0, startIndex).trimEnd();
+                const after = current.substring(endIndex + endMarker.length).trimStart();
+                return [before, after].filter(Boolean).join('\n\n');
+              }
+              return current;
+            }
+
+            const [{ data: pr }, commentsResponse] = await Promise.all([
+              github.rest.pulls.get({ owner, repo, pull_number: prNumber }),
+              github.rest.issues.listComments({ owner, repo, issue_number: prNumber }),
+            ]);
+
+            const previewComments = commentsResponse.data.filter(c =>
+              c.user?.type === 'Bot' && c.body.includes('<!-- WordPress Playground PR Preview')
+            );
+
+            for (const comment of previewComments) {
+              try {
+                await github.rest.issues.deleteComment({
+                  owner,
+                  repo,
+                  comment_id: comment.id,
+                });
+              } catch (_) {}
+            }
+
+            const cleanedBody = removeDescription(pr.body);
+            if (cleanedBody !== (pr.body || '')) {
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: prNumber,
+                body: cleanedBody,
+              });
+            }
+
       - name: Checkout repository
+        if: env.STORAGE_METHOD == 'branch'
         uses: actions/checkout@v4
 
       - name: Cleanup branch storage
