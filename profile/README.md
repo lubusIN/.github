@@ -1,4 +1,4 @@
-<a href="https://cal.com/lubus" target="_blank">
+<a href="https://book.lubus.in/" target="_blank">
   <img src="https://raw.githubusercontent.com/lubusIN/.github/refs/heads/main/profile/cover.png" alt="lubus cover"/>
 </a>
 
