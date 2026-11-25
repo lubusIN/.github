@@ -8,16 +8,16 @@ on:
         required: false
         type: string
         default: '/wp-admin/post.php?post=4&action=edit'
+      mode:
+        description: 'Where to post preview links: "description" (default) or "comment".'
+        required: false
+        type: string
+        default: 'description'
       append-to-pr-description:
-        description: 'Whether to append preview links to the PR description instead of posting a comment.'
+        description: 'Deprecated: Use `mode` instead.'
         required: false
         type: boolean
-        default: false
-      update-pr-description:
-        description: 'Alias for append-to-pr-description.'
-        required: false
-        type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: write
@@ -89,7 +89,8 @@ jobs:
         uses: actions/github-script@v9
         env:
           LANDING_PAGE: ${{ inputs.landing-page }}
-          APPEND_TO_PR_DESCRIPTION: ${{ inputs.append-to-pr-description || inputs.update-pr-description || false }}
+          PREVIEW_MODE: ${{ inputs.mode }}
+          APPEND_TO_PR_DESCRIPTION: ${{ inputs.append-to-pr-description }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -186,7 +187,10 @@ jobs:
             const startMarker = '<!-- WordPress Playground PR Preview - Start -->';
             const endMarker = '<!-- WordPress Playground PR Preview - End -->';
 
-            const appendToPrDescription = String(process.env.APPEND_TO_PR_DESCRIPTION).toLowerCase() === 'true';
+            const rawMode = (process.env.PREVIEW_MODE || 'description').toLowerCase();
+            const appendToPrDescription = rawMode === 'comment' || process.env.APPEND_TO_PR_DESCRIPTION === 'false'
+              ? false
+              : true;
 
             const updateMessage = appendToPrDescription
               ? 'I will update this description with the latest preview links as you push more changes to this PR.'
